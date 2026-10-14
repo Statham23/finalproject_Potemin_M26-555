@@ -60,3 +60,26 @@ def register_user(username: str, password: str) -> User:
     save_json("portfolios.json", portfolios)
 
     return user
+
+
+def login_user(username: str, password: str) -> User:
+    users = load_json("users.json")
+
+    for user_data in users:
+        if user_data["username"] == username:
+            user = User(
+                user_id=user_data["user_id"],
+                username=user_data["username"],
+                hashed_password=user_data["hashed_password"],
+                salt=user_data["salt"],
+                registration_date=datetime.fromisoformat(
+                    user_data["registration_date"]
+                ),
+            )
+
+            if not user.verify_password(password):
+                raise ValueError("Неверный пароль")
+
+            return user
+
+    raise ValueError(f"Пользователь '{username}' не найден")
