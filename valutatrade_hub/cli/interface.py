@@ -1,6 +1,11 @@
 import shlex
 
-from valutatrade_hub.core.usecases import login_user, register_user
+from valutatrade_hub.core.models import User
+from valutatrade_hub.core.usecases import (
+    login_user,
+    register_user,
+    show_portfolio,
+)
 
 
 def run() -> None:
@@ -37,6 +42,9 @@ def run() -> None:
 
             if user is not None:
                 current_user = user
+
+        elif args[0] == "show-portfolio":
+            handle_show_portfolio(args[1:], current_user)
 
         elif args[0] == "whoami":
             if current_user is None:
@@ -82,6 +90,52 @@ def handle_login(args: list[str]):
 
     print(f"Вы вошли как '{user.username}'")
     return user
+
+
+def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
+    if current_user is None:
+        print("Сначала выполните login")
+        return
+
+    if not args:
+        base_currency = "USD"
+    elif len(args) == 2 and args[0] == "--base":
+        base_currency = args[1]
+    else:
+        print("Использование: show-portfolio --base <валюта>")
+        return
+
+    try:
+        result = show_portfolio(
+            user_id=current_user.user_id,
+            base_currency=base_currency,
+        )
+    except ValueError as error:
+        print(error)
+        return
+
+    print(
+        f"Портфель пользователя '{current_user.username}' "
+        f"(база: {result['base_currency']}):"
+    )
+
+    if not result["wallets"]:
+        print("Портфель пуст")
+        return
+
+    for wallet in result["wallets"]:
+        code = wallet["currency_code"]
+        balance = wallet["balance"]
+        value = wallet["value"]
+
+        balance_precision = 4 if code in ("BTC", "ETH") else 2
+
+        print(
+            f"- {code}: {balance:,.{balance_precision}f} → {value:,.2f} {base_currency}"
+        )
+
+    print("--------------------------------------")
+    print(f"ИТОГО: {result['total']:,.2f} {base_currency}")
 
 
 def main() -> None:

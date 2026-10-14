@@ -2,7 +2,11 @@ import unittest
 from io import StringIO
 from unittest.mock import Mock, patch
 
-from valutatrade_hub.cli.interface import handle_login, handle_register
+from valutatrade_hub.cli.interface import (
+    handle_login,
+    handle_register,
+    handle_show_portfolio,
+)
 
 
 class TestRegisterCLI(unittest.TestCase):
@@ -81,3 +85,109 @@ class TestLoginCLI(unittest.TestCase):
         self.assertIsNone(result)
         mock_login.assert_not_called()
         self.assertIn("Использование:", mock_stdout.getvalue())
+
+
+class TestShowPortfolioCLI(unittest.TestCase):
+    def setUp(self):
+        self.user = Mock()
+        self.user.user_id = 1
+        self.user.username = "alice"
+
+        self.portfolio_result = {
+            "base_currency": "USD",
+            "wallets": [
+                {
+                    "currency_code": "USD",
+                    "balance": 150.0,
+                    "value": 150.0,
+                },
+                {
+                    "currency_code": "BTC",
+                    "balance": 0.05,
+                    "value": 2966.8605,
+                },
+                {
+                    "currency_code": "EUR",
+                    "balance": 200.0,
+                    "value": 215.72,
+                },
+            ],
+            "total": 3332.5805,
+        }
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.show_portfolio")
+    def test_successful_display(self, mock_show, mock_stdout):
+        mock_show.return_value = self.portfolio_result
+
+        handle_show_portfolio([], self.user)
+
+        mock_show.assert_called_once_with(
+            user_id=1,
+            base_currency="USD",
+        )
+
+        output = mock_stdout.getvalue()
+
+        self.assertIn("Портфель пользователя 'alice'", output)
+        self.assertIn("BTC: 0.0500", output)
+        self.assertIn("2,966.86 USD", output)
+        self.assertIn("ИТОГО: 3,332.58 USD", output)
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.show_portfolio")
+    def test_not_logged_in(self, mock_show, mock_stdout):
+        handle_show_portfolio([], None)
+
+        mock_show.assert_not_called()
+        self.assertIn("Сначала выполните login", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.show_portfolio")
+    def test_custom_base(self, mock_show, mock_stdout):
+        mock_show.return_value = {
+            "base_currency": "EUR",
+            "wallets": [],
+            "total": 0.0,
+        }
+
+        handle_show_portfolio(["--base", "EUR"], self.user)
+
+        mock_show.assert_called_once_with(
+            user_id=1,
+            base_currency="EUR",
+        )
+        self.assertIn("база: EUR", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.show_portfolio")
+    def test_unknown_currency(self, mock_show, mock_stdout):
+        mock_show.side_effect = ValueError("Неизвестная базовая валюта 'ABC'")
+
+        handle_show_portfolio(["--base", "ABC"], self.user)
+
+        self.assertIn(
+            "Неизвестная базовая валюта 'ABC'",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.show_portfolio")
+    def test_invalid_arguments(self, mock_show, mock_stdout):
+        handle_show_portfolio(["--base"], self.user)
+
+        mock_show.assert_not_called()
+        self.assertIn("Использование:", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.show_portfolio")
+    def test_empty_portfolio(self, mock_show, mock_stdout):
+        mock_show.return_value = {
+            "base_currency": "USD",
+            "wallets": [],
+            "total": 0.0,
+        }
+
+        handle_show_portfolio([], self.user)
+
+        self.assertIn("Портфель пуст", mock_stdout.getvalue())
