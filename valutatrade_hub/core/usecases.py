@@ -3,7 +3,10 @@ import secrets
 from datetime import datetime
 
 from valutatrade_hub.core.currencies import get_currency
-from valutatrade_hub.core.exceptions import CurrencyNotFoundError
+from valutatrade_hub.core.exceptions import (
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import load_json, save_json
 
@@ -250,4 +253,56 @@ def buy(user_id: int, currency_code: str, amount: float) -> dict:
         "old_balance": old_balance,
         "new_balance": wallet.balance,
         "estimated_cost": estimated_cost,
+    }
+
+
+def sell(user_id: int, currency_code: str, amount: float) -> dict:
+    if (
+        isinstance(amount, bool)
+        or not isinstance(amount, (int, float))
+        or not math.isfinite(amount)
+        or amount <= 0
+    ):
+        raise ValueError("'amount' должен быть положительным числом")
+
+    get_currency(currency_code)
+
+    portfolio = get_user_portfolio(user_id)
+
+    if currency_code not in portfolio.wallets:
+        raise ValueError(
+            f"У вас нет кошелька '{currency_code}'. "
+            "Добавьте валюту: она создаётся автоматически "
+            "при первой покупке."
+        )
+
+    wallet = portfolio.get_wallet(currency_code)
+    old_balance = wallet.balance
+
+    if old_balance < amount:
+        raise InsufficientFundsError(
+            f"Недостаточно средств: доступно {old_balance:.4f} "
+            f"{currency_code}, требуется {amount:.4f} {currency_code}"
+        )
+
+    rates = get_exchange_rates()
+    pair = f"{currency_code}_USD"
+
+    if pair not in rates:
+        raise ValueError(f"Не удалось получить курс для {currency_code}→USD")
+
+    rate = rates[pair]
+    estimated_revenue = amount * rate
+
+    wallet.withdraw(amount)
+
+    save_user_portfolio(portfolio)
+
+    return {
+        "currency_code": currency_code,
+        "amount": amount,
+        "rate": rate,
+        "old_balance": old_balance,
+        "new_balance": wallet.balance,
+        "estimated_revenue": estimated_revenue,
     }

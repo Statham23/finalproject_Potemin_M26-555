@@ -6,9 +6,13 @@ from valutatrade_hub.cli.interface import (
     handle_buy,
     handle_login,
     handle_register,
+    handle_sell,
     handle_show_portfolio,
 )
-from valutatrade_hub.core.exceptions import CurrencyNotFoundError
+from valutatrade_hub.core.exceptions import (
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 
 
 class TestRegisterCLI(unittest.TestCase):
@@ -307,6 +311,139 @@ class TestBuyCLI(unittest.TestCase):
 
         handle_buy(
             ["--currency", "BTC", "--amount", "0.05"],
+            self.user,
+        )
+
+        self.assertIn(
+            "Не удалось получить курс для BTC→USD",
+            mock_stdout.getvalue(),
+        )
+
+
+class TestSellCLI(unittest.TestCase):
+    def setUp(self):
+        self.user = Mock()
+        self.user.user_id = 1
+        self.user.username = "alice"
+
+        self.sell_result = {
+            "currency_code": "BTC",
+            "amount": 0.01,
+            "rate": 59337.21,
+            "old_balance": 0.05,
+            "new_balance": 0.04,
+            "estimated_revenue": 593.3721,
+        }
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_successful_sell(self, mock_sell, mock_stdout):
+        mock_sell.return_value = self.sell_result
+
+        handle_sell(
+            ["--currency", "BTC", "--amount", "0.01"],
+            self.user,
+        )
+
+        mock_sell.assert_called_once_with(
+            user_id=1,
+            currency_code="BTC",
+            amount=0.01,
+        )
+
+        output = mock_stdout.getvalue()
+        self.assertIn("Продажа выполнена", output)
+        self.assertIn("0.0100 BTC", output)
+        self.assertIn("было 0.0500 → стало 0.0400", output)
+        self.assertIn("593.37 USD", output)
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_not_logged_in(self, mock_sell, mock_stdout):
+        handle_sell(
+            ["--currency", "BTC", "--amount", "0.01"],
+            None,
+        )
+
+        mock_sell.assert_not_called()
+        self.assertIn("Сначала выполните login", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_invalid_arguments(self, mock_sell, mock_stdout):
+        handle_sell(["--currency", "BTC"], self.user)
+
+        mock_sell.assert_not_called()
+        self.assertIn("Использование:", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_invalid_amount_string(self, mock_sell, mock_stdout):
+        handle_sell(
+            ["--currency", "BTC", "--amount", "abc"],
+            self.user,
+        )
+
+        mock_sell.assert_not_called()
+        self.assertIn(
+            "'amount' должен быть положительным числом",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_insufficient_funds(self, mock_sell, mock_stdout):
+        mock_sell.side_effect = InsufficientFundsError(
+            "Недостаточно средств: доступно 0.0400 BTC, требуется 0.0500 BTC"
+        )
+
+        handle_sell(
+            ["--currency", "BTC", "--amount", "0.05"],
+            self.user,
+        )
+
+        self.assertIn(
+            "Недостаточно средств: доступно 0.0400 BTC",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_missing_wallet(self, mock_sell, mock_stdout):
+        mock_sell.side_effect = ValueError("У вас нет кошелька 'ETH'.")
+
+        handle_sell(
+            ["--currency", "ETH", "--amount", "1"],
+            self.user,
+        )
+
+        self.assertIn(
+            "У вас нет кошелька 'ETH'",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_unknown_currency(self, mock_sell, mock_stdout):
+        mock_sell.side_effect = CurrencyNotFoundError("Неизвестная валюта 'ABC'")
+
+        handle_sell(
+            ["--currency", "ABC", "--amount", "1"],
+            self.user,
+        )
+
+        self.assertIn(
+            "Неизвестная валюта 'ABC'",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.sell")
+    def test_missing_rate(self, mock_sell, mock_stdout):
+        mock_sell.side_effect = ValueError("Не удалось получить курс для BTC→USD")
+
+        handle_sell(
+            ["--currency", "BTC", "--amount", "0.01"],
             self.user,
         )
 

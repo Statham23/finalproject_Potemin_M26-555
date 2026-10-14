@@ -1,11 +1,15 @@
 import shlex
 
-from valutatrade_hub.core.exceptions import CurrencyNotFoundError
+from valutatrade_hub.core.exceptions import (
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.models import User
 from valutatrade_hub.core.usecases import (
     buy,
     login_user,
     register_user,
+    sell,
     show_portfolio,
 )
 
@@ -50,6 +54,9 @@ def run() -> None:
 
         elif args[0] == "buy":
             handle_buy(args[1:], current_user)
+
+        elif args[0] == "sell":
+            handle_sell(args[1:], current_user)
 
         elif args[0] == "whoami":
             if current_user is None:
@@ -187,6 +194,49 @@ def handle_buy(args: list[str], current_user: User | None) -> None:
     )
 
     print(f"Оценочная стоимость покупки: {result['estimated_cost']:,.2f} USD")
+
+
+def handle_sell(args: list[str], current_user: User | None) -> None:
+    if current_user is None:
+        print("Сначала выполните login")
+        return
+
+    if len(args) != 4 or args[0] != "--currency" or args[2] != "--amount":
+        print("Использование: sell --currency <код> --amount <количество>")
+        return
+
+    currency_code = args[1]
+
+    try:
+        amount = float(args[3])
+    except ValueError:
+        print("'amount' должен быть положительным числом")
+        return
+
+    try:
+        result = sell(
+            user_id=current_user.user_id,
+            currency_code=currency_code,
+            amount=amount,
+        )
+    except (CurrencyNotFoundError, InsufficientFundsError, ValueError) as error:
+        print(error)
+        return
+
+    print(
+        f"Продажа выполнена: {result['amount']:.4f} "
+        f"{result['currency_code']} по курсу "
+        f"{result['rate']:.2f} USD/{result['currency_code']}"
+    )
+
+    print("Изменения в портфеле:")
+    print(
+        f"- {result['currency_code']}: "
+        f"было {result['old_balance']:.4f} → "
+        f"стало {result['new_balance']:.4f}"
+    )
+
+    print(f"Оценочная выручка: {result['estimated_revenue']:,.2f} USD")
 
 
 def main() -> None:
