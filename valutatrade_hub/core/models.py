@@ -3,6 +3,14 @@ import hmac
 import math
 from datetime import datetime
 
+EXCHANGE_RATES = {
+    "USD_USD": 1.0,
+    "EUR_USD": 1.11,
+    "BTC_USD": 82000.0,
+    "ETH_USD": 2500.0,
+    "RUB_USD": 0.012,
+}
+
 
 class User:
     def __init__(
@@ -143,3 +151,113 @@ class Wallet:
             "currency_code": self.currency_code,
             "balance": self._balance,
         }
+
+
+class Portfolio:
+    def __init__(
+        self,
+        user_id: int,
+        wallets: dict[str, Wallet] | None = None,
+        user: User | None = None,
+    ) -> None:
+        if type(user_id) is not int or user_id <= 0:
+            raise ValueError("ID пользователя должен быть положительным целым числом")
+
+        if user is not None:
+            if not isinstance(user, User):
+                raise TypeError("user должен быть объектом User")
+
+            if user.user_id != user_id:
+                raise ValueError("ID пользователя не совпадает с владельцем портфеля")
+
+        if wallets is not None:
+            if not isinstance(wallets, dict):
+                raise TypeError("wallets должен быть словарём")
+
+            for currency_code, wallet in wallets.items():
+                if not isinstance(wallet, Wallet):
+                    raise TypeError("Все значения wallets должны быть объектами Wallet")
+
+                if currency_code != wallet.currency_code:
+                    raise ValueError("Код валюты не совпадает с кодом кошелька")
+
+        self._user_id = user_id
+        self._user = user
+        self._wallets = wallets.copy() if wallets is not None else {}
+
+    @property
+    def user_id(self) -> int:
+        return self._user_id
+
+    @property
+    def user(self) -> User | None:
+        return self._user
+
+    @property
+    def wallets(self) -> dict[str, Wallet]:
+        return self._wallets.copy()
+
+    def add_currency(self, currency_code: str) -> None:
+        if not isinstance(currency_code, str) or not currency_code.strip():
+            raise ValueError("Код валюты не может быть пустым")
+
+        if currency_code in self._wallets:
+            raise ValueError(f"Кошелёк {currency_code} уже существует")
+
+        self._wallets[currency_code] = Wallet(currency_code)
+
+    def get_wallet(self, currency_code: str) -> Wallet:
+        if not isinstance(currency_code, str) or not currency_code.strip():
+            raise ValueError("Код валюты не может быть пустым")
+
+        if currency_code not in self._wallets:
+            raise ValueError(f"Кошелёк {currency_code} не найден")
+
+        return self._wallets[currency_code]
+
+    def get_total_value(
+        self,
+        base_currency: str = "USD",
+        rates: dict[str, float] | None = None,
+    ) -> float:
+        if not isinstance(base_currency, str) or not base_currency.strip():
+            raise ValueError("Код базовой валюты не может быть пустым")
+
+        if rates is None:
+            rates = EXCHANGE_RATES
+
+        base_currency = base_currency.upper()
+
+        base_rate = 1.0 if base_currency == "USD" else rates.get(f"{base_currency}_USD")
+
+        if base_rate is None:
+            raise ValueError(f"Не найден курс для базовой валюты {base_currency}")
+
+        if isinstance(base_rate, bool) or not isinstance(base_rate, (int, float)):
+            raise ValueError("Некорректный курс базовой валюты")
+
+        if not math.isfinite(base_rate) or base_rate <= 0:
+            raise ValueError("Курс базовой валюты должен быть положительным")
+
+        total_usd = 0.0
+
+        for currency_code, wallet in self._wallets.items():
+            if wallet.balance == 0:
+                continue
+
+            rate = 1.0 if currency_code == "USD" else rates.get(f"{currency_code}_USD")
+
+            if rate is None:
+                raise ValueError(f"Не найден курс для валюты {currency_code}")
+
+            if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+                raise ValueError(f"Некорректный курс валюты {currency_code}")
+
+            if not math.isfinite(rate) or rate <= 0:
+                raise ValueError(
+                    f"Курс валюты {currency_code} должен быть положительным"
+                )
+
+            total_usd += wallet.balance * rate
+
+        return total_usd / base_rate
