@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import math
 from datetime import datetime
 
 
@@ -87,3 +88,58 @@ class User:
         hashed_password = hashlib.sha256(password_with_salt.encode("utf-8")).hexdigest()
 
         return hmac.compare_digest(hashed_password, self._hashed_password)
+
+
+class Wallet:
+    def __init__(self, currency_code: str, balance: float = 0.0) -> None:
+        if not isinstance(currency_code, str) or not currency_code.strip():
+            raise ValueError("Код валюты не может быть пустым")
+
+        self.currency_code = currency_code
+        self.balance = balance
+
+    @property
+    def balance(self) -> float:
+        return self._balance
+
+    @balance.setter
+    def balance(self, new_balance: float) -> None:
+        if isinstance(new_balance, bool) or not isinstance(new_balance, (int, float)):
+            raise TypeError("Баланс должен быть числом")
+
+        if not math.isfinite(new_balance):
+            raise ValueError("Баланс должен быть конечным числом")
+
+        if new_balance < 0:
+            raise ValueError("Баланс не может быть отрицательным")
+
+        self._balance = float(new_balance)
+
+    def deposit(self, amount: float) -> None:
+        if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+            raise TypeError("Сумма пополнения должна быть числом")
+
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError(
+                "Сумма пополнения должна быть положительным конечным числом"
+            )
+
+        self._balance += amount
+
+    def withdraw(self, amount: float) -> None:
+        if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+            raise TypeError("Сумма снятия должна быть числом")
+
+        if not math.isfinite(amount) or amount <= 0:
+            raise ValueError("Сумма снятия должна быть положительным конечным числом")
+
+        if amount > self._balance:
+            raise ValueError("Недостаточно средств на балансе")
+
+        self._balance -= amount
+
+    def get_balance_info(self) -> dict:
+        return {
+            "currency_code": self.currency_code,
+            "balance": self._balance,
+        }
