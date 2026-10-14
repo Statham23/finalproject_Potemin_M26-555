@@ -1,7 +1,9 @@
 import shlex
 
+from valutatrade_hub.core.exceptions import CurrencyNotFoundError
 from valutatrade_hub.core.models import User
 from valutatrade_hub.core.usecases import (
+    buy,
     login_user,
     register_user,
     show_portfolio,
@@ -45,6 +47,9 @@ def run() -> None:
 
         elif args[0] == "show-portfolio":
             handle_show_portfolio(args[1:], current_user)
+
+        elif args[0] == "buy":
+            handle_buy(args[1:], current_user)
 
         elif args[0] == "whoami":
             if current_user is None:
@@ -136,6 +141,52 @@ def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
 
     print("--------------------------------------")
     print(f"ИТОГО: {result['total']:,.2f} {base_currency}")
+
+
+def handle_buy(args: list[str], current_user: User | None) -> None:
+    if current_user is None:
+        print("Сначала выполните login")
+        return
+
+    if len(args) != 4 or args[0] != "--currency" or args[2] != "--amount":
+        print("Использование: buy --currency <код валюты> --amount <количество>")
+        return
+
+    currency_code = args[1]
+
+    try:
+        amount = float(args[3])
+    except ValueError:
+        print("'amount' должен быть положительным числом")
+        return
+
+    try:
+        result = buy(
+            user_id=current_user.user_id,
+            currency_code=currency_code,
+            amount=amount,
+        )
+    except CurrencyNotFoundError as error:
+        print(error)
+        return
+    except ValueError as error:
+        print(error)
+        return
+
+    print(
+        f"Покупка выполнена: {result['amount']:.4f} "
+        f"{result['currency_code']} по курсу "
+        f"{result['rate']:.2f} USD/{result['currency_code']}"
+    )
+
+    print("Изменения в портфеле:")
+    print(
+        f"- {result['currency_code']}: "
+        f"было {result['old_balance']:.4f} → "
+        f"стало {result['new_balance']:.4f}"
+    )
+
+    print(f"Оценочная стоимость покупки: {result['estimated_cost']:,.2f} USD")
 
 
 def main() -> None:

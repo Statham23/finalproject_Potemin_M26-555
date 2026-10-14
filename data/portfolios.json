@@ -2,9 +2,18 @@
     {
         "user_id": 1,
         "wallets": {
-            "USD": {"balance": 150.0},
-            "BTC": {"balance": 0.05},
-            "EUR": {"balance": 200.0}
+            "USD": {
+                "balance": 150.0
+            },
+            "BTC": {
+                "balance": 0.12000000000000001
+            },
+            "EUR": {
+                "balance": 200.0
+            },
+            "ETH": {
+                "balance": 2.0
+            }
         }
     }
 ]

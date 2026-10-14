@@ -3,10 +3,12 @@ from io import StringIO
 from unittest.mock import Mock, patch
 
 from valutatrade_hub.cli.interface import (
+    handle_buy,
     handle_login,
     handle_register,
     handle_show_portfolio,
 )
+from valutatrade_hub.core.exceptions import CurrencyNotFoundError
 
 
 class TestRegisterCLI(unittest.TestCase):
@@ -191,3 +193,124 @@ class TestShowPortfolioCLI(unittest.TestCase):
         handle_show_portfolio([], self.user)
 
         self.assertIn("Портфель пуст", mock_stdout.getvalue())
+
+
+class TestBuyCLI(unittest.TestCase):
+    def setUp(self):
+        self.user = Mock()
+        self.user.user_id = 1
+        self.user.username = "alice"
+
+        self.buy_result = {
+            "currency_code": "BTC",
+            "amount": 0.05,
+            "rate": 59337.21,
+            "old_balance": 0.07,
+            "new_balance": 0.12,
+            "estimated_cost": 2966.8605,
+        }
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_successful_buy(self, mock_buy, mock_stdout):
+        mock_buy.return_value = self.buy_result
+
+        handle_buy(
+            ["--currency", "BTC", "--amount", "0.05"],
+            self.user,
+        )
+
+        mock_buy.assert_called_once_with(
+            user_id=1,
+            currency_code="BTC",
+            amount=0.05,
+        )
+
+        output = mock_stdout.getvalue()
+        self.assertIn("Покупка выполнена", output)
+        self.assertIn("0.0500 BTC", output)
+        self.assertIn("было 0.0700 → стало 0.1200", output)
+        self.assertIn("2,966.86 USD", output)
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_not_logged_in(self, mock_buy, mock_stdout):
+        handle_buy(
+            ["--currency", "BTC", "--amount", "0.05"],
+            None,
+        )
+
+        mock_buy.assert_not_called()
+        self.assertIn("Сначала выполните login", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_invalid_arguments(self, mock_buy, mock_stdout):
+        handle_buy(["--currency", "BTC"], self.user)
+
+        mock_buy.assert_not_called()
+        self.assertIn("Использование:", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_invalid_amount_string(self, mock_buy, mock_stdout):
+        handle_buy(
+            ["--currency", "BTC", "--amount", "abc"],
+            self.user,
+        )
+
+        mock_buy.assert_not_called()
+        self.assertIn(
+            "'amount' должен быть положительным числом",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_non_positive_amount(self, mock_buy, mock_stdout):
+        mock_buy.side_effect = ValueError("'amount' должен быть положительным числом")
+
+        handle_buy(
+            ["--currency", "BTC", "--amount", "-1"],
+            self.user,
+        )
+
+        mock_buy.assert_called_once_with(
+            user_id=1,
+            currency_code="BTC",
+            amount=-1.0,
+        )
+        self.assertIn(
+            "'amount' должен быть положительным числом",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_unknown_currency(self, mock_buy, mock_stdout):
+        mock_buy.side_effect = CurrencyNotFoundError("Неизвестная валюта 'ABC'")
+
+        handle_buy(
+            ["--currency", "ABC", "--amount", "1"],
+            self.user,
+        )
+
+        self.assertIn(
+            "Неизвестная валюта 'ABC'",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.buy")
+    def test_missing_rate(self, mock_buy, mock_stdout):
+        mock_buy.side_effect = ValueError("Не удалось получить курс для BTC→USD")
+
+        handle_buy(
+            ["--currency", "BTC", "--amount", "0.05"],
+            self.user,
+        )
+
+        self.assertIn(
+            "Не удалось получить курс для BTC→USD",
+            mock_stdout.getvalue(),
+        )

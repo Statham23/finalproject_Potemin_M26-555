@@ -112,6 +112,25 @@ def get_user_portfolio(user_id: int) -> Portfolio:
     raise ValueError(f"Портфель пользователя с ID {user_id} не найден")
 
 
+def save_user_portfolio(portfolio: Portfolio) -> None:
+    portfolios = load_json("portfolios.json")
+
+    wallets_data = {}
+
+    for currency_code, wallet in portfolio.wallets.items():
+        wallets_data[currency_code] = {
+            "balance": wallet.balance,
+        }
+
+    for portfolio_data in portfolios:
+        if portfolio_data["user_id"] == portfolio.user_id:
+            portfolio_data["wallets"] = wallets_data
+            save_json("portfolios.json", portfolios)
+            return
+
+    raise ValueError(f"Портфель пользователя с ID {portfolio.user_id} не найден")
+
+
 def get_exchange_rates() -> dict[str, float]:
     rates_data = load_json("rates.json")
     rates = {"USD_USD": 1.0}
@@ -189,4 +208,46 @@ def show_portfolio(
         "base_currency": base_currency,
         "wallets": wallet_info,
         "total": total,
+    }
+
+
+def buy(user_id: int, currency_code: str, amount: float) -> dict:
+    if (
+        isinstance(amount, bool)
+        or not isinstance(amount, (int, float))
+        or not math.isfinite(amount)
+        or amount <= 0
+    ):
+        raise ValueError("'amount' должен быть положительным числом")
+
+    get_currency(currency_code)
+
+    rates = get_exchange_rates()
+    pair = f"{currency_code}_USD"
+
+    if pair not in rates:
+        raise ValueError(f"Не удалось получить курс для {currency_code}→USD")
+
+    rate = rates[pair]
+    estimated_cost = amount * rate
+
+    portfolio = get_user_portfolio(user_id)
+
+    if currency_code not in portfolio.wallets:
+        portfolio.add_currency(currency_code)
+
+    wallet = portfolio.get_wallet(currency_code)
+    old_balance = wallet.balance
+
+    wallet.deposit(amount)
+
+    save_user_portfolio(portfolio)
+
+    return {
+        "currency_code": currency_code,
+        "amount": amount,
+        "rate": rate,
+        "old_balance": old_balance,
+        "new_balance": wallet.balance,
+        "estimated_cost": estimated_cost,
     }
