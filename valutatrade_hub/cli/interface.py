@@ -225,7 +225,12 @@ def handle_sell(args: list[str], current_user: User | None) -> None:
             currency_code=currency_code,
             amount=amount,
         )
-    except (CurrencyNotFoundError, InsufficientFundsError, ValueError) as error:
+    except CurrencyNotFoundError as error:
+        print(error)
+        print("Поддерживаемые валюты: USD, EUR, RUB, BTC, ETH")
+        return
+
+    except (InsufficientFundsError, ValueError) as error:
         print(error)
         return
 
@@ -266,12 +271,12 @@ def handle_get_rate(args: list[str]) -> None:
         )
     except CurrencyNotFoundError as error:
         print(error)
+        print("Поддерживаемые валюты: USD, EUR, RUB, BTC, ETH")
+        print("Использование: get-rate --from USD --to BTC")
         return
-    except ApiRequestError:
-        print(
-            f"Курс {from_currency}→{to_currency} недоступен. "
-            "Повторите попытку позже или выполните update-rates."
-        )
+    except ApiRequestError as error:
+        print(error)
+        print("Проверьте подключение к сети или повторите попытку позже.")
         return
     except ValueError as error:
         print(error)

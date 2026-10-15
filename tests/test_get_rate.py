@@ -87,7 +87,10 @@ class TestGetRate(unittest.TestCase):
             get_rate("ABC", "USD")
 
     def test_missing_parser_rate(self):
-        with self.assertRaises(ApiRequestError):
+        with self.assertRaisesRegex(
+            ApiRequestError,
+            "Ошибка при обращении к внешнему API:",
+        ):
             get_rate("BTC", "EUR")
 
     def test_parser_error_does_not_modify_cache(self):

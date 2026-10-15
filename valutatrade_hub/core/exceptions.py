@@ -7,4 +7,4 @@ class InsufficientFundsError(Exception):
 
 
 class ApiRequestError(Exception):
-    """Ошибка получения данных от внешнего сервиса."""
+    """Ошибка при обращении к внешнему API."""

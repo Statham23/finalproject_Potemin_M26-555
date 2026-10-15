@@ -60,7 +60,7 @@ class TestCryptoCurrency(unittest.TestCase):
 
         self.assertEqual(
             btc.get_display_info(),
-            "[CRYPTO] BTC — Bitcoin (Algo: SHA-256, MCAP: 1.12e+12)",
+            "[CRYPTO] BTC — Bitcoin (Algo: SHA-256, MCAP: 1.12e12)",
         )
 
     def test_invalid_algorithm(self):

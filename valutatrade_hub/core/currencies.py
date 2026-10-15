@@ -73,9 +73,9 @@ class CryptoCurrency(Currency):
         self.market_cap = float(market_cap)
 
     def get_display_info(self) -> str:
+        mcap = f"{self.market_cap:.2e}".replace("e+", "e")
         return (
-            f"[CRYPTO] {self.code} — {self.name} "
-            f"(Algo: {self.algorithm}, MCAP: {self.market_cap:.2e})"
+            f"[CRYPTO] {self.code} — {self.name} (Algo: {self.algorithm}, MCAP: {mcap})"
         )
 
 

@@ -390,7 +390,10 @@ def fetch_rate_from_parser(from_currency: str, to_currency: str) -> float:
     if reverse_pair in MOCK_RATES:
         return 1.0 / MOCK_RATES[reverse_pair]
 
-    raise ApiRequestError(f"Курс {from_currency}→{to_currency} недоступен")
+    raise ApiRequestError(
+        "Ошибка при обращении к внешнему API: "
+        f"курс {from_currency}→{to_currency} недоступен"
+    )
 
 
 def update_cached_rate(from_currency: str, to_currency: str) -> dict:
@@ -411,7 +414,10 @@ def update_cached_rate(from_currency: str, to_currency: str) -> dict:
         or not math.isfinite(rate)
         or rate <= 0
     ):
-        raise ApiRequestError(f"Некорректный курс {from_currency}→{to_currency}")
+        raise ApiRequestError(
+            "Ошибка при обращении к внешнему API: "
+            f"получен некорректный курс {from_currency}→{to_currency}"
+        )
 
     rates_data = load_json("rates.json")
 

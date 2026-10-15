@@ -498,23 +498,35 @@ class TestGetRateCLI(unittest.TestCase):
 
         handle_get_rate(["--from", "ABC", "--to", "USD"])
 
-        self.assertIn(
-            "Неизвестная валюта 'ABC'",
-            mock_stdout.getvalue(),
-        )
+        output = mock_stdout.getvalue()
+
+        self.assertIn("Неизвестная валюта 'ABC'", output)
+        self.assertIn("USD, EUR, RUB, BTC, ETH", output)
+        self.assertIn("get-rate --from USD --to BTC", output)
 
     @patch("sys.stdout", new_callable=StringIO)
     @patch("valutatrade_hub.cli.interface.get_rate")
     def test_parser_error(self, mock_get_rate, mock_stdout):
-        mock_get_rate.side_effect = ApiRequestError("Курс BTC→EUR недоступен")
+        mock_get_rate.side_effect = ApiRequestError(
+            "Ошибка при обращении к внешнему API: курс BTC→EUR недоступен"
+        )
 
         handle_get_rate(["--from", "BTC", "--to", "EUR"])
 
+        output = mock_stdout.getvalue()
+
         self.assertIn(
-            "Курс BTC→EUR недоступен",
-            mock_stdout.getvalue(),
+            "Ошибка при обращении к внешнему API:",
+            output,
         )
-        self.assertIn("update-rates", mock_stdout.getvalue())
+        self.assertIn(
+            "Проверьте подключение к сети",
+            output,
+        )
+        self.assertIn(
+            "повторите попытку позже",
+            output,
+        )
 
     @patch("sys.stdout", new_callable=StringIO)
     @patch("valutatrade_hub.cli.interface.get_rate")
