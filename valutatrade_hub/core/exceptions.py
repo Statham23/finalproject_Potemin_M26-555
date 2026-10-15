@@ -4,3 +4,7 @@ class CurrencyNotFoundError(Exception):
 
 class InsufficientFundsError(Exception):
     """Недостаточно средств для выполнения операции."""
+
+
+class ApiRequestError(Exception):
+    """Ошибка получения данных от внешнего сервиса."""

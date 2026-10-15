@@ -4,12 +4,14 @@ from unittest.mock import Mock, patch
 
 from valutatrade_hub.cli.interface import (
     handle_buy,
+    handle_get_rate,
     handle_login,
     handle_register,
     handle_sell,
     handle_show_portfolio,
 )
 from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
     CurrencyNotFoundError,
     InsufficientFundsError,
 )
@@ -451,3 +453,91 @@ class TestSellCLI(unittest.TestCase):
             "Не удалось получить курс для BTC→USD",
             mock_stdout.getvalue(),
         )
+
+
+class TestGetRateCLI(unittest.TestCase):
+    def setUp(self):
+        self.rate_result = {
+            "from_currency": "USD",
+            "to_currency": "BTC",
+            "rate": 1 / 59337.21,
+            "reverse_rate": 59337.21,
+            "updated_at": "2025-10-09T00:03:22",
+        }
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.get_rate")
+    def test_successful_get_rate(self, mock_get_rate, mock_stdout):
+        mock_get_rate.return_value = self.rate_result
+
+        handle_get_rate(["--from", "USD", "--to", "BTC"])
+
+        mock_get_rate.assert_called_once_with(
+            from_currency="USD",
+            to_currency="BTC",
+        )
+
+        output = mock_stdout.getvalue()
+
+        self.assertIn("Курс USD→BTC: 0.00001685", output)
+        self.assertIn("Обратный курс BTC→USD: 59337.21", output)
+        self.assertIn("2025-10-09 00:03:22", output)
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.get_rate")
+    def test_invalid_arguments(self, mock_get_rate, mock_stdout):
+        handle_get_rate(["--from", "USD"])
+
+        mock_get_rate.assert_not_called()
+        self.assertIn("Использование:", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.get_rate")
+    def test_unknown_currency(self, mock_get_rate, mock_stdout):
+        mock_get_rate.side_effect = CurrencyNotFoundError("Неизвестная валюта 'ABC'")
+
+        handle_get_rate(["--from", "ABC", "--to", "USD"])
+
+        self.assertIn(
+            "Неизвестная валюта 'ABC'",
+            mock_stdout.getvalue(),
+        )
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.get_rate")
+    def test_parser_error(self, mock_get_rate, mock_stdout):
+        mock_get_rate.side_effect = ApiRequestError("Курс BTC→EUR недоступен")
+
+        handle_get_rate(["--from", "BTC", "--to", "EUR"])
+
+        self.assertIn(
+            "Курс BTC→EUR недоступен",
+            mock_stdout.getvalue(),
+        )
+        self.assertIn("update-rates", mock_stdout.getvalue())
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.get_rate")
+    def test_same_currency(self, mock_get_rate, mock_stdout):
+        mock_get_rate.return_value = {
+            "from_currency": "USD",
+            "to_currency": "USD",
+            "rate": 1.0,
+            "reverse_rate": 1.0,
+            "updated_at": None,
+        }
+
+        handle_get_rate(["--from", "USD", "--to", "USD"])
+
+        output = mock_stdout.getvalue()
+        self.assertIn("Курс USD→USD: 1.00", output)
+        self.assertIn("не требуется", output)
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("valutatrade_hub.cli.interface.get_rate")
+    def test_invalid_rate_data(self, mock_get_rate, mock_stdout):
+        mock_get_rate.side_effect = ValueError("Некорректный курс")
+
+        handle_get_rate(["--from", "BTC", "--to", "USD"])
+
+        self.assertIn("Некорректный курс", mock_stdout.getvalue())
