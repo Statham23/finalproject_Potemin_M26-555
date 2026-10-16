@@ -156,6 +156,12 @@ def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
     print(f"ИТОГО: {result['total']:,.2f} {base_currency}")
 
 
+def format_rate(rate: float) -> str:
+    if rate < 1:
+        return f"{rate:.8f}"
+    return f"{rate:.2f}"
+
+
 def handle_buy(args: list[str], current_user: User | None) -> None:
     if current_user is None:
         print("Сначала выполните login")
@@ -181,6 +187,7 @@ def handle_buy(args: list[str], current_user: User | None) -> None:
         )
     except CurrencyNotFoundError as error:
         print(error)
+        print("Поддерживаемые валюты: USD, EUR, RUB, BTC, ETH")
         return
     except ValueError as error:
         print(error)
@@ -189,7 +196,7 @@ def handle_buy(args: list[str], current_user: User | None) -> None:
     print(
         f"Покупка выполнена: {result['amount']:.4f} "
         f"{result['currency_code']} по курсу "
-        f"{result['rate']:.2f} USD/{result['currency_code']}"
+        f"{format_rate(result['rate'])} USD/{result['currency_code']}"
     )
 
     print("Изменения в портфеле:")
@@ -237,7 +244,7 @@ def handle_sell(args: list[str], current_user: User | None) -> None:
     print(
         f"Продажа выполнена: {result['amount']:.4f} "
         f"{result['currency_code']} по курсу "
-        f"{result['rate']:.2f} USD/{result['currency_code']}"
+        f"{format_rate(result['rate'])} USD/{result['currency_code']}"
     )
 
     print("Изменения в портфеле:")
@@ -248,12 +255,6 @@ def handle_sell(args: list[str], current_user: User | None) -> None:
     )
 
     print(f"Оценочная выручка: {result['estimated_revenue']:,.2f} USD")
-
-
-def format_rate(rate: float) -> str:
-    if rate < 1:
-        return f"{rate:.8f}"
-    return f"{rate:.2f}"
 
 
 def handle_get_rate(args: list[str]) -> None:
