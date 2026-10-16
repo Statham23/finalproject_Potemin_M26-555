@@ -293,7 +293,7 @@ def handle_get_rate(args: list[str]) -> None:
 
     print(
         f"Курс {from_currency}→{to_currency}: "
-        f"{format_rate(result['rate'])}"
+        f"{format_rate(result['rate'])} "
         f"(обновлено: {formatted_time})"
     )
 

@@ -10,6 +10,7 @@ from valutatrade_hub.core.exceptions import (
 )
 from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import load_json, save_json
+from valutatrade_hub.infra.settings import SettingsLoader
 
 
 def register_user(username: str, password: str) -> User:
@@ -309,13 +310,23 @@ def sell(user_id: int, currency_code: str, amount: float) -> dict:
     }
 
 
-def is_rate_fresh(updated_at: str, max_age_minutes: int = 5) -> bool:
+def is_rate_fresh(
+    updated_at: str,
+    max_age_minutes: int | None = None,
+) -> bool:
+    """Проверяет свежесть курса относительно установленного TTL."""
+    settings = SettingsLoader()
+
+    if max_age_minutes is None:
+        ttl_seconds = settings.get("rates_ttl_seconds", 300)
+    else:
+        ttl_seconds = max_age_minutes * 60
+
     updated_time = datetime.fromisoformat(updated_at)
     current_time = datetime.now(updated_time.tzinfo)
-
     age = current_time - updated_time
 
-    return timedelta(0) <= age < timedelta(minutes=max_age_minutes)
+    return timedelta(0) <= age < timedelta(seconds=ttl_seconds)
 
 
 def get_cached_rate(from_currency: str, to_currency: str) -> dict | None:

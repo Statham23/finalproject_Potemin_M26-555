@@ -128,3 +128,12 @@ class TestGetRate(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             get_cached_rate("BTC", "USD")
+
+    @patch("valutatrade_hub.core.usecases.SettingsLoader")
+    def test_ttl_from_settings(self, mock_settings):
+        mock_settings.return_value.get.return_value = 600
+
+        updated_at = (datetime.now(timezone.utc) - timedelta(minutes=7)).isoformat()
+
+        self.assertTrue(is_rate_fresh(updated_at))
+        mock_settings.return_value.get.assert_called_once_with("rates_ttl_seconds", 300)
