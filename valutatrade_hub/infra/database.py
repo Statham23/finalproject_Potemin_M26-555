@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -63,8 +65,33 @@ class DatabaseManager:
         data: Any,
         data_dir: Path | None = None,
     ) -> None:
-        """Сохраняет данные в JSON-файл."""
+        """Атомарно сохраняет данные в JSON-файл."""
         file_path = self._get_file_path(filename, data_dir)
 
-        with file_path.open("w", encoding="utf-8") as file:
-            json.dump(data, file, ensure_ascii=False, indent=4)
+        json_text = json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=4,
+        )
+
+        temp_path = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=file_path.parent,
+                prefix=f".{file_path.stem}_",
+                suffix=".tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+                temp_file.write(json_text)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+
+            os.replace(temp_path, file_path)
+
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
