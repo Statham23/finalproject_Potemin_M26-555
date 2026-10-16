@@ -10,6 +10,7 @@ from valutatrade_hub.core.exceptions import (
 )
 from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import load_json, save_json
+from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.settings import SettingsLoader
 
 
@@ -216,6 +217,7 @@ def show_portfolio(
     }
 
 
+@log_action("BUY", verbose=True)
 def buy(user_id: int, currency_code: str, amount: float) -> dict:
     if (
         isinstance(amount, bool)
@@ -258,6 +260,7 @@ def buy(user_id: int, currency_code: str, amount: float) -> dict:
     }
 
 
+@log_action("SELL", verbose=True)
 def sell(user_id: int, currency_code: str, amount: float) -> dict:
     if (
         isinstance(amount, bool)
