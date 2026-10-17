@@ -1,3 +1,4 @@
+import math
 import shlex
 from datetime import datetime
 
@@ -15,6 +16,13 @@ from valutatrade_hub.core.usecases import (
     sell,
     show_portfolio,
 )
+from valutatrade_hub.core.utils import load_json
+from valutatrade_hub.parser_service.api_clients import (
+    CoinGeckoClient,
+    ExchangeRateApiClient,
+)
+from valutatrade_hub.parser_service.storage import RatesStorage
+from valutatrade_hub.parser_service.updater import RatesUpdater
 
 
 def run() -> None:
@@ -63,6 +71,12 @@ def run() -> None:
 
         elif args[0] == "get-rate":
             handle_get_rate(args[1:])
+
+        elif args[0] == "update-rates":
+            handle_update_rates(args[1:])
+
+        elif args[0] == "show-rates":
+            handle_show_rates(args[1:])
 
         elif args[0] == "whoami":
             if current_user is None:
@@ -301,6 +315,202 @@ def handle_get_rate(args: list[str]) -> None:
         f"Обратный курс {to_currency}→{from_currency}: "
         f"{format_rate(result['reverse_rate'])}"
     )
+
+
+def handle_update_rates(args: list[str]) -> None:
+    """Обновляет курсы валют через Parser Service."""
+
+    if not args:
+        source = "all"
+    elif len(args) == 2 and args[0] == "--source":
+        source = args[1].lower()
+    else:
+        print("Использование: update-rates [--source coingecko|exchangerate]")
+        return
+
+    if source not in ("all", "coingecko", "exchangerate"):
+        print(
+            f"Неизвестный источник '{source}'. "
+            "Доступные источники: coingecko, exchangerate"
+        )
+        return
+
+    clients = []
+
+    if source in ("all", "coingecko"):
+        clients.append(CoinGeckoClient())
+
+    if source in ("all", "exchangerate"):
+        clients.append(ExchangeRateApiClient())
+
+    updater = RatesUpdater(
+        clients=clients,
+        storage=RatesStorage(),
+    )
+
+    print("Начинаем обновление валютных курсов...")
+
+    try:
+        rates = updater.run_update()
+    except ApiRequestError as error:
+        print(f"Ошибка обновления курсов: {error}")
+        return
+
+    if updater.errors:
+        print("Обновление завершено с ошибками.")
+        print(f"Получено курсов: {len(rates)}")
+        print(f"Обновлено записей кеша: {updater.updated_count}")
+        print("Подробности ошибок смотрите в журнале logs/actions.log.")
+    else:
+        print("Обновление успешно завершено!")
+        print(f"Получено курсов: {len(rates)}")
+        print(f"Обновлено записей кеша: {updater.updated_count}")
+
+
+def handle_show_rates(args: list[str]) -> None:
+    """Показывает валютные курсы из локального кеша."""
+
+    currency = None
+    base = "USD"
+    top = None
+
+    if len(args) % 2 != 0:
+        print(
+            "Использование: show-rates "
+            "[--currency <код>] [--top <число>] [--base <код>]"
+        )
+        return
+
+    for i in range(0, len(args), 2):
+        flag = args[i]
+        value = args[i + 1]
+
+        if flag == "--currency":
+            if currency is not None:
+                print("Параметр --currency указан повторно")
+                return
+            currency = value.upper()
+
+        elif flag == "--top":
+            if top is not None:
+                print("Параметр --top указан повторно")
+                return
+
+            try:
+                top = int(value)
+            except ValueError:
+                print("Параметр --top должен быть положительным целым числом")
+                return
+
+            if top <= 0:
+                print("Параметр --top должен быть положительным целым числом")
+                return
+
+        elif flag == "--base":
+            base = value.upper()
+
+        else:
+            print(f"Неизвестный параметр: {flag}")
+            return
+
+    if currency is not None and top is not None:
+        print("Параметры --currency и --top нельзя использовать вместе")
+        return
+
+    try:
+        rates_data = load_json("rates.json")
+    except (FileNotFoundError, ValueError):
+        print(
+            "Локальный кеш курсов пуст. "
+            "Выполните 'update-rates', чтобы загрузить данные."
+        )
+        return
+
+    pairs = rates_data.get("pairs")
+
+    if not isinstance(pairs, dict) or not pairs:
+        print(
+            "Локальный кеш курсов пуст. "
+            "Выполните 'update-rates', чтобы загрузить данные."
+        )
+        return
+
+    usd_rates = {"USD": 1.0}
+
+    for pair, data in pairs.items():
+        if not isinstance(data, dict):
+            continue
+
+        if not pair.endswith("_USD"):
+            continue
+
+        rate = data.get("rate")
+
+        if (
+            isinstance(rate, bool)
+            or not isinstance(rate, (int, float))
+            or not math.isfinite(rate)
+            or rate <= 0
+        ):
+            continue
+
+        code = pair.removesuffix("_USD")
+        usd_rates[code] = float(rate)
+
+    if base not in usd_rates:
+        print(f"Курс для '{base}' не найден в кеше.")
+        return
+
+    if currency is not None and currency not in usd_rates:
+        print(f"Курс для '{currency}' не найден в кеше.")
+        return
+
+    if top is not None:
+        crypto_codes = ("BTC", "ETH", "SOL")
+
+        selected = [code for code in crypto_codes if code in usd_rates and code != base]
+
+        selected.sort(
+            key=lambda code: usd_rates[code] / usd_rates[base],
+            reverse=True,
+        )
+
+        selected = selected[:top]
+
+    elif currency is not None:
+        selected = [currency]
+
+    else:
+        selected = sorted(code for code in usd_rates if code != base)
+
+    if not selected:
+        print("Нет курсов для отображения.")
+        return
+
+    print(
+        "Курсы из локального кеша "
+        f"(последнее обновление: {rates_data.get('last_refresh', 'неизвестно')}):"
+    )
+
+    print(f"{'Пара':<12} {'Курс':>16} {'Обновлено'}")
+    print("-" * 55)
+
+    for code in selected:
+        pair = f"{code}_{base}"
+
+        if code == base:
+            rate = 1.0
+        else:
+            rate = usd_rates[code] / usd_rates[base]
+
+        if code == "USD":
+            original_data = pairs.get(f"{base}_USD", {})
+        else:
+            original_data = pairs.get(f"{code}_USD", {})
+
+        updated_at = original_data.get("updated_at", "неизвестно")
+
+        print(f"{pair:<12} {format_rate(rate):>16} {updated_at}")
 
 
 def main() -> None:

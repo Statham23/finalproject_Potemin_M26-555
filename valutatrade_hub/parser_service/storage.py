@@ -65,7 +65,7 @@ def validate_rate_record(record: dict) -> dict:
     }
 
 
-def save_rate_record(record: dict) -> bool:
+def save_rate_record(record: dict, data_dir: Path | None = None) -> bool:
     """
     Сохраняет запись в историю.
 
@@ -76,7 +76,7 @@ def save_rate_record(record: dict) -> bool:
     validated_record = validate_rate_record(record)
 
     db = DatabaseManager()
-    history = db.load("exchange_rates.json")
+    history = db.load("exchange_rates.json", data_dir=data_dir)
 
     if not isinstance(history, list):
         raise ValueError("История курсов должна быть списком")
@@ -88,7 +88,7 @@ def save_rate_record(record: dict) -> bool:
 
     history.append(validated_record)
 
-    db.save("exchange_rates.json", history)
+    db.save("exchange_rates.json", history, data_dir=data_dir)
 
     return True
 
@@ -140,3 +140,26 @@ def update_rates_cache(
     db.save("rates.json", cache, data_dir=data_dir)
 
     return True
+
+
+class RatesStorage:
+    """Хранилище истории и актуального кеша курсов."""
+
+    def __init__(self, data_dir: Path | None = None):
+        self.data_dir = data_dir
+
+    def save_record(self, record: dict) -> dict:
+        history_added = save_rate_record(
+            record,
+            data_dir=self.data_dir,
+        )
+
+        cache_updated = update_rates_cache(
+            record,
+            data_dir=self.data_dir,
+        )
+
+        return {
+            "history_added": history_added,
+            "cache_updated": cache_updated,
+        }
