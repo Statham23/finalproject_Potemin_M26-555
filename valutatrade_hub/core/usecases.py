@@ -2,6 +2,7 @@ import math
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from valutatrade_hub.core import utils
 from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import (
     ApiRequestError,
@@ -12,6 +13,7 @@ from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import load_json, save_json
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.settings import SettingsLoader
+from valutatrade_hub.parser_service.storage import update_rates_cache
 
 
 def register_user(username: str, password: str) -> User:
@@ -139,12 +141,14 @@ def save_user_portfolio(portfolio: Portfolio) -> None:
 
 def get_exchange_rates() -> dict[str, float]:
     rates_data = load_json("rates.json")
+
+    pairs = rates_data.get("pairs")
+    if not isinstance(pairs, dict):
+        raise ValueError("Некорректный формат rates.json: ожидается объект pairs")
+
     rates = {"USD_USD": 1.0}
 
-    for pair, data in rates_data.items():
-        if pair in ("source", "last_refresh"):
-            continue
-
+    for pair, data in pairs.items():
         if not isinstance(data, dict) or "rate" not in data:
             raise ValueError(f"Некорректные данные курса '{pair}'")
 
@@ -325,7 +329,7 @@ def is_rate_fresh(
     else:
         ttl_seconds = max_age_minutes * 60
 
-    updated_time = datetime.fromisoformat(updated_at)
+    updated_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
     current_time = datetime.now(updated_time.tzinfo)
     age = current_time - updated_time
 
@@ -344,46 +348,41 @@ def get_cached_rate(from_currency: str, to_currency: str) -> dict | None:
 
     rates_data = load_json("rates.json")
 
+    pairs = rates_data.get("pairs")
+    if not isinstance(pairs, dict):
+        raise ValueError("Некорректный формат rates.json: ожидается объект pairs")
+
     direct_pair = f"{from_currency}_{to_currency}"
     reverse_pair = f"{to_currency}_{from_currency}"
 
-    if direct_pair in rates_data:
-        rate_data = rates_data[direct_pair]
+    if direct_pair in pairs:
+        rate_data = pairs[direct_pair]
+        pair = direct_pair
+        is_reverse = False
+    elif reverse_pair in pairs:
+        rate_data = pairs[reverse_pair]
+        pair = reverse_pair
+        is_reverse = True
+    else:
+        return None
 
-        rate = rate_data["rate"]
+    if not isinstance(rate_data, dict):
+        raise ValueError(f"Некорректные данные курса '{pair}'")
 
-        if (
-            isinstance(rate, bool)
-            or not isinstance(rate, (int, float))
-            or not math.isfinite(rate)
-            or rate <= 0
-        ):
-            raise ValueError(f"Некорректный курс для '{direct_pair}'")
+    rate = rate_data.get("rate")
 
-        return {
-            "rate": float(rate),
-            "updated_at": rate_data["updated_at"],
-        }
+    if (
+        isinstance(rate, bool)
+        or not isinstance(rate, (int, float))
+        or not math.isfinite(rate)
+        or rate <= 0
+    ):
+        raise ValueError(f"Некорректный курс для '{pair}'")
 
-    if reverse_pair in rates_data:
-        rate_data = rates_data[reverse_pair]
-
-        rate = rate_data["rate"]
-
-        if (
-            isinstance(rate, bool)
-            or not isinstance(rate, (int, float))
-            or not math.isfinite(rate)
-            or rate <= 0
-        ):
-            raise ValueError(f"Некорректный курс для '{reverse_pair}'")
-
-        return {
-            "rate": 1.0 / rate,
-            "updated_at": rate_data["updated_at"],
-        }
-
-    return None
+    return {
+        "rate": 1.0 / rate if is_reverse else float(rate),
+        "updated_at": rate_data["updated_at"],
+    }
 
 
 MOCK_RATES = {
@@ -417,7 +416,9 @@ def update_cached_rate(from_currency: str, to_currency: str) -> dict:
     if from_currency == to_currency:
         return {
             "rate": 1.0,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z"),
         }
 
     rate = fetch_rate_from_parser(from_currency, to_currency)
@@ -433,20 +434,32 @@ def update_cached_rate(from_currency: str, to_currency: str) -> dict:
             f"получен некорректный курс {from_currency}→{to_currency}"
         )
 
-    rates_data = load_json("rates.json")
+    updated_at = (
+        datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
 
-    updated_at = datetime.now(timezone.utc).isoformat()
-    pair = f"{from_currency}_{to_currency}"
-
-    rates_data[pair] = {
+    record = {
+        "from_currency": from_currency,
+        "to_currency": to_currency,
         "rate": float(rate),
-        "updated_at": updated_at,
+        "timestamp": updated_at,
+        "source": "MockParserService",
+        "meta": {},
     }
 
-    rates_data["source"] = "MockParserService"
-    rates_data["last_refresh"] = updated_at
+    updated = update_rates_cache(
+        record,
+        data_dir=utils.DATA_DIR,
+    )
 
-    save_json("rates.json", rates_data)
+    if not updated:
+        cached = get_cached_rate(from_currency, to_currency)
+        if cached is None:
+            raise ApiRequestError(
+                "Ошибка при обращении к внешнему API: "
+                "не удалось получить сохранённый курс"
+            )
+        return cached
 
     return {
         "rate": float(rate),
@@ -460,19 +473,26 @@ def get_rate(from_currency: str, to_currency: str) -> dict:
 
     cached = get_cached_rate(from_currency, to_currency)
 
-    if cached is not None and (
-        cached["updated_at"] is None or is_rate_fresh(cached["updated_at"])
-    ):
-        rate_data = cached
-    else:
-        rate_data = update_cached_rate(from_currency, to_currency)
+    if cached is None:
+        raise ApiRequestError(
+            "Ошибка при обращении к внешнему API: "
+            f"курс {from_currency}→{to_currency} отсутствует в кеше. "
+            "Выполните update-rates."
+        )
 
-    rate = rate_data["rate"]
+    if cached["updated_at"] is not None and not is_rate_fresh(cached["updated_at"]):
+        raise ApiRequestError(
+            "Ошибка при обращении к внешнему API: "
+            f"курс {from_currency}→{to_currency} устарел. "
+            "Выполните update-rates."
+        )
+
+    rate = cached["rate"]
 
     return {
         "from_currency": from_currency,
         "to_currency": to_currency,
         "rate": rate,
         "reverse_rate": 1.0 / rate,
-        "updated_at": rate_data["updated_at"],
+        "updated_at": cached["updated_at"],
     }

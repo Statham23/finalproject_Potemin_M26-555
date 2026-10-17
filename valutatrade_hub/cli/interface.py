@@ -277,7 +277,6 @@ def handle_get_rate(args: list[str]) -> None:
         return
     except ApiRequestError as error:
         print(error)
-        print("Проверьте подключение к сети или повторите попытку позже.")
         return
     except ValueError as error:
         print(error)

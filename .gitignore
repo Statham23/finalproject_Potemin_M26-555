@@ -18,3 +18,5 @@ build/
 
 logs/
 tests/
+
+data/*.backup.json
