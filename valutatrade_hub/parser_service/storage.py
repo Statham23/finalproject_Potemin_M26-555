@@ -81,7 +81,16 @@ def save_rate_record(record: dict, data_dir: Path | None = None) -> bool:
     if not isinstance(history, list):
         raise ValueError("История курсов должна быть списком")
 
-    existing_ids = {item["id"] for item in history}
+    existing_ids = set()
+
+    for item in history:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise ValueError(
+                "Некорректный формат exchange_rates.json: "
+                "каждая запись должна содержать строковый id"
+            )
+
+        existing_ids.add(item["id"])
 
     if validated_record["id"] in existing_ids:
         return False
@@ -118,9 +127,27 @@ def update_rates_cache(
     current_record = cache["pairs"].get(pair)
 
     if current_record is not None:
-        current_timestamp = datetime.fromisoformat(
-            current_record["updated_at"].replace("Z", "+00:00")
-        )
+        if not isinstance(current_record, dict):
+            raise ValueError(f"Некорректная запись кеша для пары {pair}")
+
+        current_updated_at = current_record.get("updated_at")
+
+        if not isinstance(current_updated_at, str):
+            raise ValueError(f"Некорректное время обновления для пары {pair}")
+
+        try:
+            current_timestamp = datetime.fromisoformat(
+                current_updated_at.replace("Z", "+00:00")
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"Некорректное время обновления для пары {pair}"
+            ) from error
+
+        if current_timestamp.tzinfo is None:
+            raise ValueError(
+                f"Время обновления для пары {pair} должно содержать часовой пояс"
+            )
 
         new_datetime = datetime.fromisoformat(new_timestamp.replace("Z", "+00:00"))
 

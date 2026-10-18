@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from valutatrade_hub.logging_config import setup_logging
+from valutatrade_hub.core.exceptions import ApiRequestError
+from valutatrade_hub.logging_config import setup_parser_logging
 from valutatrade_hub.parser_service.api_clients import (
     BaseApiClient,
     CoinGeckoClient,
@@ -17,9 +18,12 @@ class RatesUpdater:
         clients: list[BaseApiClient],
         storage: RatesStorage,
     ):
+        if not clients:
+            raise ValueError("Не указан ни один API-клиент")
+
         self.clients = clients
         self.storage = storage
-        self.logger = setup_logging()
+        self.logger = setup_parser_logging()
         self.errors: list[str] = []
         self.updated_count = 0
 
@@ -33,12 +37,16 @@ class RatesUpdater:
 
         return type(client).__name__
 
-    def run_update(self) -> dict[str, float]:
+    def run_update(self) -> dict:
+        """Обновляет курсы и возвращает сводку выполнения."""
+
         self.errors = []
         self.updated_count = 0
+
         self.logger.info("Начало обновления валютных курсов")
 
         all_rates = {}
+        last_refresh = None
 
         for client in self.clients:
             source = self.get_source(client)
@@ -48,8 +56,8 @@ class RatesUpdater:
             try:
                 rates = client.fetch_rates()
 
-                if not isinstance(rates, dict):
-                    raise ValueError("Клиент вернул не словарь")
+                if not isinstance(rates, dict) or not rates:
+                    raise ApiRequestError(f"{source} не вернул валютные курсы")
 
                 self.logger.info(
                     "Получено %s курсов от %s",
@@ -89,6 +97,7 @@ class RatesUpdater:
 
                     if result["cache_updated"]:
                         self.updated_count += 1
+                        last_refresh = timestamp
 
                     all_rates[pair] = rate
 
@@ -109,9 +118,24 @@ class RatesUpdater:
                         source,
                     )
 
+        # Ни один курс не удалось получить и обработать.
+        if not all_rates:
+            self.logger.error("Обновление не удалось: ни один курс не обработан")
+
+            raise ApiRequestError(
+                "Не удалось обновить валютные курсы. "
+                "Проверьте подключение к интернету и повторите попытку позже."
+            )
+
         self.logger.info(
-            "Обновление завершено. Обработано курсов: %s",
+            "Обновление завершено. Обработано курсов: %s, обновлено в кеше: %s",
             len(all_rates),
+            self.updated_count,
         )
 
-        return all_rates
+        return {
+            "rates": all_rates,
+            "updated_count": self.updated_count,
+            "last_refresh": last_refresh,
+            "errors": self.errors.copy(),
+        }

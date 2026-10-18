@@ -1,8 +1,7 @@
 import math
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-from valutatrade_hub.core import utils
 from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import (
     ApiRequestError,
@@ -13,7 +12,6 @@ from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import load_json, save_json
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.settings import SettingsLoader
-from valutatrade_hub.parser_service.storage import update_rates_cache
 
 
 def register_user(username: str, password: str) -> User:
@@ -142,7 +140,11 @@ def save_user_portfolio(portfolio: Portfolio) -> None:
 def get_exchange_rates() -> dict[str, float]:
     rates_data = load_json("rates.json")
 
+    if not isinstance(rates_data, dict):
+        raise ValueError("Некорректный формат rates.json: ожидается JSON-объект")
+
     pairs = rates_data.get("pairs")
+
     if not isinstance(pairs, dict):
         raise ValueError("Некорректный формат rates.json: ожидается объект pairs")
 
@@ -347,6 +349,8 @@ def get_cached_rate(from_currency: str, to_currency: str) -> dict | None:
         }
 
     rates_data = load_json("rates.json")
+    if not isinstance(rates_data, dict):
+        raise ValueError("Некорректный формат rates.json: ожидается JSON-объект")
 
     pairs = rates_data.get("pairs")
     if not isinstance(pairs, dict):
@@ -385,88 +389,6 @@ def get_cached_rate(from_currency: str, to_currency: str) -> dict | None:
     }
 
 
-MOCK_RATES = {
-    "BTC_USD": 59337.21,
-    "ETH_USD": 3720.0,
-    "EUR_USD": 1.0786,
-    "RUB_USD": 0.01016,
-}
-
-
-def fetch_rate_from_parser(from_currency: str, to_currency: str) -> float:
-    direct_pair = f"{from_currency}_{to_currency}"
-    reverse_pair = f"{to_currency}_{from_currency}"
-
-    if direct_pair in MOCK_RATES:
-        return MOCK_RATES[direct_pair]
-
-    if reverse_pair in MOCK_RATES:
-        return 1.0 / MOCK_RATES[reverse_pair]
-
-    raise ApiRequestError(
-        "Ошибка при обращении к внешнему API: "
-        f"курс {from_currency}→{to_currency} недоступен"
-    )
-
-
-def update_cached_rate(from_currency: str, to_currency: str) -> dict:
-    get_currency(from_currency)
-    get_currency(to_currency)
-
-    if from_currency == to_currency:
-        return {
-            "rate": 1.0,
-            "updated_at": datetime.now(timezone.utc)
-            .isoformat(timespec="seconds")
-            .replace("+00:00", "Z"),
-        }
-
-    rate = fetch_rate_from_parser(from_currency, to_currency)
-
-    if (
-        isinstance(rate, bool)
-        or not isinstance(rate, (int, float))
-        or not math.isfinite(rate)
-        or rate <= 0
-    ):
-        raise ApiRequestError(
-            "Ошибка при обращении к внешнему API: "
-            f"получен некорректный курс {from_currency}→{to_currency}"
-        )
-
-    updated_at = (
-        datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-    )
-
-    record = {
-        "from_currency": from_currency,
-        "to_currency": to_currency,
-        "rate": float(rate),
-        "timestamp": updated_at,
-        "source": "MockParserService",
-        "meta": {},
-    }
-
-    updated = update_rates_cache(
-        record,
-        data_dir=utils.DATA_DIR,
-    )
-
-    if not updated:
-        cached = get_cached_rate(from_currency, to_currency)
-        if cached is None:
-            raise ApiRequestError(
-                "Ошибка при обращении к внешнему API: "
-                "не удалось получить сохранённый курс"
-            )
-        return cached
-
-    return {
-        "rate": float(rate),
-        "updated_at": updated_at,
-    }
-
-
 def get_rate(from_currency: str, to_currency: str) -> dict:
     get_currency(from_currency)
     get_currency(to_currency)
@@ -475,16 +397,13 @@ def get_rate(from_currency: str, to_currency: str) -> dict:
 
     if cached is None:
         raise ApiRequestError(
-            "Ошибка при обращении к внешнему API: "
-            f"курс {from_currency}→{to_currency} отсутствует в кеше. "
+            f"Курс {from_currency}→{to_currency} отсутствует в кеше. "
             "Выполните update-rates."
         )
 
     if cached["updated_at"] is not None and not is_rate_fresh(cached["updated_at"]):
         raise ApiRequestError(
-            "Ошибка при обращении к внешнему API: "
-            f"курс {from_currency}→{to_currency} устарел. "
-            "Выполните update-rates."
+            f"Курс {from_currency}→{to_currency} устарел. Выполните update-rates."
         )
 
     rate = cached["rate"]

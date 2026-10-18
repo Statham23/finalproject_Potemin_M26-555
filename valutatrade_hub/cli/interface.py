@@ -17,6 +17,7 @@ from valutatrade_hub.core.usecases import (
     show_portfolio,
 )
 from valutatrade_hub.core.utils import load_json
+from valutatrade_hub.logging_config import parser_console_logging
 from valutatrade_hub.parser_service.api_clients import (
     CoinGeckoClient,
     ExchangeRateApiClient,
@@ -351,20 +352,23 @@ def handle_update_rates(args: list[str]) -> None:
     print("Начинаем обновление валютных курсов...")
 
     try:
-        rates = updater.run_update()
+        with parser_console_logging():
+            result = updater.run_update()
     except ApiRequestError as error:
         print(f"Ошибка обновления курсов: {error}")
         return
 
-    if updater.errors:
+    if result["errors"]:
         print("Обновление завершено с ошибками.")
-        print(f"Получено курсов: {len(rates)}")
-        print(f"Обновлено записей кеша: {updater.updated_count}")
-        print("Подробности ошибок смотрите в журнале logs/actions.log.")
     else:
         print("Обновление успешно завершено!")
-        print(f"Получено курсов: {len(rates)}")
-        print(f"Обновлено записей кеша: {updater.updated_count}")
+
+    print(f"Получено курсов: {len(result['rates'])}")
+    print(f"Обновлено записей кеша: {result['updated_count']}")
+    print(f"Последнее обновление: {result['last_refresh']}")
+
+    if result["errors"]:
+        print("Подробности ошибок смотрите в logs/parser.log.")
 
 
 def handle_show_rates(args: list[str]) -> None:
@@ -373,6 +377,7 @@ def handle_show_rates(args: list[str]) -> None:
     currency = None
     base = "USD"
     top = None
+    base_specified = False
 
     if len(args) % 2 != 0:
         print(
@@ -407,7 +412,12 @@ def handle_show_rates(args: list[str]) -> None:
                 return
 
         elif flag == "--base":
+            if base_specified:
+                print("Параметр --base указан повторно")
+                return
+
             base = value.upper()
+            base_specified = True
 
         else:
             print(f"Неизвестный параметр: {flag}")
@@ -419,16 +429,27 @@ def handle_show_rates(args: list[str]) -> None:
 
     try:
         rates_data = load_json("rates.json")
-    except (FileNotFoundError, ValueError):
+    except FileNotFoundError:
         print(
             "Локальный кеш курсов пуст. "
             "Выполните 'update-rates', чтобы загрузить данные."
         )
         return
+    except ValueError:
+        print("Не удалось прочитать rates.json: некорректный JSON.")
+        return
+
+    if not isinstance(rates_data, dict):
+        print("Некорректный формат rates.json: ожидается JSON-объект.")
+        return
 
     pairs = rates_data.get("pairs")
 
-    if not isinstance(pairs, dict) or not pairs:
+    if not isinstance(pairs, dict):
+        print("Некорректный формат rates.json: ожидается объект pairs.")
+        return
+
+    if not pairs:
         print(
             "Локальный кеш курсов пуст. "
             "Выполните 'update-rates', чтобы загрузить данные."
@@ -503,12 +524,22 @@ def handle_show_rates(args: list[str]) -> None:
         else:
             rate = usd_rates[code] / usd_rates[base]
 
-        if code == "USD":
-            original_data = pairs.get(f"{base}_USD", {})
-        else:
-            original_data = pairs.get(f"{code}_USD", {})
+        source_times = []
 
-        updated_at = original_data.get("updated_at", "неизвестно")
+        for currency_code in (code, base):
+            if currency_code == "USD":
+                continue
+
+            source_data = pairs.get(f"{currency_code}_USD", {})
+            updated_at = source_data.get("updated_at")
+
+            if isinstance(updated_at, str):
+                source_times.append(updated_at)
+
+        if source_times:
+            updated_at = min(source_times)
+        else:
+            updated_at = "неизвестно"
 
         print(f"{pair:<12} {format_rate(rate):>16} {updated_at}")
 

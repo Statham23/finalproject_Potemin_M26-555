@@ -3,7 +3,7 @@ from typing import Any
 
 from valutatrade_hub.infra.database import DatabaseManager
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+DATA_DIR: Path | None = None
 
 
 def load_json(filename: str) -> Any:

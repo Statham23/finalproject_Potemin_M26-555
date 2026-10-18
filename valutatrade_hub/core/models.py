@@ -3,14 +3,6 @@ import hmac
 import math
 from datetime import datetime
 
-EXCHANGE_RATES = {
-    "USD_USD": 1.0,
-    "EUR_USD": 1.11,
-    "BTC_USD": 82000.0,
-    "ETH_USD": 2500.0,
-    "RUB_USD": 0.012,
-}
-
 
 class User:
     def __init__(
@@ -224,7 +216,9 @@ class Portfolio:
             raise ValueError("Код базовой валюты не может быть пустым")
 
         if rates is None:
-            rates = EXCHANGE_RATES
+            raise ValueError(
+                "Для расчёта стоимости портфеля необходимо передать курсы валют"
+            )
 
         base_currency = base_currency.upper()
 
