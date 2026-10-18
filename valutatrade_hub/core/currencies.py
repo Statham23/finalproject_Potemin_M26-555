@@ -90,6 +90,11 @@ CURRENCY_REGISTRY: dict[str, Currency] = {
         code="EUR",
         issuing_country="Eurozone",
     ),
+    "GBP": FiatCurrency(
+        name="British Pound",
+        code="GBP",
+        issuing_country="United Kingdom",
+    ),
     "RUB": FiatCurrency(
         name="Russian Ruble",
         code="RUB",
@@ -106,6 +111,12 @@ CURRENCY_REGISTRY: dict[str, Currency] = {
         code="ETH",
         algorithm="Proof of Stake",
         market_cap=300_000_000_000,
+    ),
+    "SOL": CryptoCurrency(
+        name="Solana",
+        code="SOL",
+        algorithm="Proof of Stake",
+        market_cap=0.0,
     ),
 }
 

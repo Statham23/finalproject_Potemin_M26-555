@@ -2,6 +2,9 @@ import math
 import shlex
 from datetime import datetime
 
+from prettytable import PrettyTable
+
+from valutatrade_hub.core.currencies import CURRENCY_REGISTRY
 from valutatrade_hub.core.exceptions import (
     ApiRequestError,
     CurrencyNotFoundError,
@@ -156,18 +159,30 @@ def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
         print("Портфель пуст")
         return
 
+    table = PrettyTable()
+
+    table.field_names = ["Валюта", "Баланс", f"Стоимость ({base_currency})"]
+
+    table.align["Валюта"] = "l"
+    table.align["Баланс"] = "r"
+    table.align[f"Стоимость ({base_currency})"] = "r"
+
     for wallet in result["wallets"]:
         code = wallet["currency_code"]
         balance = wallet["balance"]
         value = wallet["value"]
 
-        balance_precision = 4 if code in ("BTC", "ETH") else 2
+        balance_precision = 4 if code in ("BTC", "ETH", "SOL") else 2
 
-        print(
-            f"- {code}: {balance:,.{balance_precision}f} → {value:,.2f} {base_currency}"
+        table.add_row(
+            [
+                code,
+                f"{balance:,.{balance_precision}f}",
+                f"{value:,.2f}",
+            ]
         )
 
-    print("--------------------------------------")
+    print(table)
     print(f"ИТОГО: {result['total']:,.2f} {base_currency}")
 
 
@@ -202,7 +217,7 @@ def handle_buy(args: list[str], current_user: User | None) -> None:
         )
     except CurrencyNotFoundError as error:
         print(error)
-        print("Поддерживаемые валюты: USD, EUR, RUB, BTC, ETH")
+        print("Поддерживаемые валюты: " + ", ".join(CURRENCY_REGISTRY))
         return
     except ValueError as error:
         print(error)
@@ -249,7 +264,7 @@ def handle_sell(args: list[str], current_user: User | None) -> None:
         )
     except CurrencyNotFoundError as error:
         print(error)
-        print("Поддерживаемые валюты: USD, EUR, RUB, BTC, ETH")
+        print("Поддерживаемые валюты: " + ", ".join(CURRENCY_REGISTRY))
         return
 
     except (InsufficientFundsError, ValueError) as error:
@@ -287,7 +302,7 @@ def handle_get_rate(args: list[str]) -> None:
         )
     except CurrencyNotFoundError as error:
         print(error)
-        print("Поддерживаемые валюты: USD, EUR, RUB, BTC, ETH")
+        print("Поддерживаемые валюты: " + ", ".join(CURRENCY_REGISTRY))
         print("Использование: get-rate --from USD --to BTC")
         return
     except ApiRequestError as error:
@@ -513,8 +528,12 @@ def handle_show_rates(args: list[str]) -> None:
         f"(последнее обновление: {rates_data.get('last_refresh', 'неизвестно')}):"
     )
 
-    print(f"{'Пара':<12} {'Курс':>16} {'Обновлено'}")
-    print("-" * 55)
+    table = PrettyTable()
+
+    table.field_names = ["Пара", "Курс", "Обновлено"]
+    table.align["Пара"] = "l"
+    table.align["Курс"] = "r"
+    table.align["Обновлено"] = "l"
 
     for code in selected:
         pair = f"{code}_{base}"
@@ -541,7 +560,9 @@ def handle_show_rates(args: list[str]) -> None:
         else:
             updated_at = "неизвестно"
 
-        print(f"{pair:<12} {format_rate(rate):>16} {updated_at}")
+        table.add_row([pair, format_rate(rate), updated_at])
+
+    print(table)
 
 
 def main() -> None:
