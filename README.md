@@ -394,3 +394,17 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
+
+## Демонстрация работы
+
+### 1. Основной сценарий торговли
+
+Регистрация, авторизация, покупка и продажа валют, просмотр портфеля, получение курсов и обработка ошибок.
+
+[![ValutaTrade Hub — Trading Demo](https://asciinema.org/a/MGaNeKQ6vrW4d1CR.svg)](https://asciinema.org/a/MGaNeKQ6vrW4d1CR)
+
+### 2. Parser Service — обновление валютных курсов
+
+Обновление курсов через внешние API, просмотр кеша, фильтрация и пересчёт курсов.
+
+[![ValutaTrade Hub — Parser Service Demo](https://asciinema.org/a/1QwW7Zh8KvAVD0xB.svg)](https://asciinema.org/a/1QwW7Zh8KvAVD0xB)

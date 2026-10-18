@@ -20,3 +20,5 @@ logs/
 tests/
 
 data/*.backup.json
+
+demo/
