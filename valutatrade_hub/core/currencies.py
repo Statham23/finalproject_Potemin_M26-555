@@ -5,6 +5,8 @@ from valutatrade_hub.core.exceptions import CurrencyNotFoundError
 
 
 class Currency(ABC):
+    """Абстрактный базовый класс валюты."""
+
     def __init__(self, name: str, code: str) -> None:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Название валюты не может быть пустым")
@@ -25,10 +27,13 @@ class Currency(ABC):
 
     @abstractmethod
     def get_display_info(self) -> str:
+        """Возвращает форматированное описание валюты."""
         pass
 
 
 class FiatCurrency(Currency):
+    """Фиатная валюта с указанием страны или региона выпуска."""
+
     def __init__(
         self,
         name: str,
@@ -43,10 +48,13 @@ class FiatCurrency(Currency):
         self.issuing_country = issuing_country
 
     def get_display_info(self) -> str:
+        """Возвращает описание фиатной валюты со страной выпуска."""
         return f"[FIAT] {self.code} — {self.name} (Issuing: {self.issuing_country})"
 
 
 class CryptoCurrency(Currency):
+    """Криптовалюта с алгоритмом и рыночной капитализацией."""
+
     def __init__(
         self,
         name: str,
@@ -73,6 +81,7 @@ class CryptoCurrency(Currency):
         self.market_cap = float(market_cap)
 
     def get_display_info(self) -> str:
+        """Возвращает описание криптовалюты с алгоритмом и капитализацией."""
         mcap = f"{self.market_cap:.2e}".replace("e+", "e")
         return (
             f"[CRYPTO] {self.code} — {self.name} (Algo: {self.algorithm}, MCAP: {mcap})"
@@ -122,6 +131,7 @@ CURRENCY_REGISTRY: dict[str, Currency] = {
 
 
 def get_currency(code: str) -> Currency:
+    """Возвращает валюту из реестра или вызывает CurrencyNotFoundError."""
     if not isinstance(code, str):
         raise CurrencyNotFoundError(f"Неизвестная валюта '{code}'")
 

@@ -20,11 +20,44 @@ def validate_rate(rate: object, currency: str) -> float:
     return float(rate)
 
 
+def handle_request_error(
+    error: requests.exceptions.RequestException,
+    service: str,
+) -> None:
+    """Преобразует сетевую ошибку API в понятную ошибку приложения."""
+
+    if isinstance(error, requests.exceptions.Timeout):
+        message = "Превышено время ожидания ответа"
+
+    elif isinstance(error, requests.exceptions.HTTPError):
+        status_code = error.response.status_code if error.response is not None else None
+
+        if status_code == 401:
+            message = "Ошибка авторизации (HTTP 401). Проверьте API-ключ"
+        elif status_code == 403:
+            message = "Доступ запрещён (HTTP 403)"
+        elif status_code == 429:
+            message = "Превышен лимит запросов (HTTP 429)"
+        elif status_code is not None:
+            message = f"HTTP-ошибка {status_code}"
+        else:
+            message = "HTTP-ошибка без кода ответа"
+
+    elif isinstance(error, requests.exceptions.ConnectionError):
+        message = "Не удалось подключиться к серверу"
+
+    else:
+        message = f"Сетевая ошибка: {type(error).__name__}"
+
+    raise ApiRequestError(f"{service}: {message}") from error
+
+
 class BaseApiClient(ABC):
     """Общий интерфейс получения валютных курсов."""
 
     @abstractmethod
     def fetch_rates(self) -> dict[str, float]:
+        """Получает валютные курсы и возвращает словарь пар и значений."""
         pass
 
 
@@ -35,6 +68,7 @@ class CoinGeckoClient(BaseApiClient):
         self.config = config or ParserConfig()
 
     def fetch_rates(self) -> dict[str, float]:
+        """Запрашивает курсы криптовалют к USD через CoinGecko."""
         base = self.config.BASE_FIAT_CURRENCY.upper()
 
         ids = [
@@ -57,9 +91,7 @@ class CoinGeckoClient(BaseApiClient):
             data = response.json()
 
         except requests.exceptions.RequestException as error:
-            raise ApiRequestError(
-                f"Ошибка при обращении к CoinGecko: {type(error).__name__}"
-            ) from error
+            handle_request_error(error, "CoinGecko")
 
         except ValueError as error:
             raise ApiRequestError("CoinGecko вернул некорректный JSON") from error
@@ -93,6 +125,7 @@ class ExchangeRateApiClient(BaseApiClient):
         self.config = config or ParserConfig()
 
     def fetch_rates(self) -> dict[str, float]:
+        """Запрашивает фиатные курсы через ExchangeRate-API."""
         api_key = self.config.EXCHANGERATE_API_KEY
 
         if not api_key:
@@ -114,9 +147,7 @@ class ExchangeRateApiClient(BaseApiClient):
             data = response.json()
 
         except requests.exceptions.RequestException as error:
-            raise ApiRequestError(
-                f"Ошибка при обращении к ExchangeRate-API: {type(error).__name__}"
-            ) from error
+            handle_request_error(error, "ExchangeRate-API")
 
         except ValueError as error:
             raise ApiRequestError(

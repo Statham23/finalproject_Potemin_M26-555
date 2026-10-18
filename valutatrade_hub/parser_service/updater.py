@@ -29,6 +29,7 @@ class RatesUpdater:
 
     @staticmethod
     def get_source(client: BaseApiClient) -> str:
+        """Возвращает название источника для указанного API-клиента."""
         if isinstance(client, CoinGeckoClient):
             return "CoinGecko"
 

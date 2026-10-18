@@ -1,6 +1,6 @@
 import math
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import (
@@ -15,6 +15,7 @@ from valutatrade_hub.infra.settings import SettingsLoader
 
 
 def register_user(username: str, password: str) -> User:
+    """Регистрирует пользователя и создаёт для него пустой портфель."""
     if not isinstance(username, str) or not username.strip():
         raise ValueError("Имя пользователя не может быть пустым")
 
@@ -72,6 +73,7 @@ def register_user(username: str, password: str) -> User:
 
 
 def login_user(username: str, password: str) -> User:
+    """Проверяет учётные данные и возвращает пользователя."""
     users = load_json("users.json")
 
     for user_data in users:
@@ -95,6 +97,7 @@ def login_user(username: str, password: str) -> User:
 
 
 def get_user_portfolio(user_id: int) -> Portfolio:
+    """Загружает портфель пользователя из JSON-хранилища."""
     if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
         raise ValueError("ID пользователя должен быть положительным целым числом")
 
@@ -119,6 +122,7 @@ def get_user_portfolio(user_id: int) -> Portfolio:
 
 
 def save_user_portfolio(portfolio: Portfolio) -> None:
+    """Сохраняет изменения кошельков пользователя."""
     portfolios = load_json("portfolios.json")
 
     wallets_data = {}
@@ -138,6 +142,7 @@ def save_user_portfolio(portfolio: Portfolio) -> None:
 
 
 def get_exchange_rates() -> dict[str, float]:
+    """Загружает и проверяет курсы валют из локального кеша."""
     rates_data = load_json("rates.json")
 
     if not isinstance(rates_data, dict):
@@ -173,6 +178,7 @@ def show_portfolio(
     user_id: int,
     base_currency: str = "USD",
 ) -> dict:
+    """Возвращает кошельки и стоимость портфеля в базовой валюте."""
     try:
         get_currency(base_currency)
     except CurrencyNotFoundError:
@@ -225,6 +231,7 @@ def show_portfolio(
 
 @log_action("BUY", verbose=True)
 def buy(user_id: int, currency_code: str, amount: float) -> dict:
+    """Добавляет купленную валюту в портфель пользователя."""
     if (
         isinstance(amount, bool)
         or not isinstance(amount, (int, float))
@@ -268,6 +275,7 @@ def buy(user_id: int, currency_code: str, amount: float) -> dict:
 
 @log_action("SELL", verbose=True)
 def sell(user_id: int, currency_code: str, amount: float) -> dict:
+    """Уменьшает баланс продаваемой валюты и сохраняет портфель."""
     if (
         isinstance(amount, bool)
         or not isinstance(amount, (int, float))
@@ -331,14 +339,25 @@ def is_rate_fresh(
     else:
         ttl_seconds = max_age_minutes * 60
 
-    updated_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-    current_time = datetime.now(updated_time.tzinfo)
+    if not isinstance(updated_at, str):
+        return False
+
+    try:
+        updated_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+
+    if updated_time.tzinfo is None:
+        return False
+
+    current_time = datetime.now(timezone.utc)
     age = current_time - updated_time
 
     return timedelta(0) <= age < timedelta(seconds=ttl_seconds)
 
 
 def get_cached_rate(from_currency: str, to_currency: str) -> dict | None:
+    """Возвращает прямой или обратный курс из локального кеша."""
     get_currency(from_currency)
     get_currency(to_currency)
 
@@ -390,6 +409,7 @@ def get_cached_rate(from_currency: str, to_currency: str) -> dict | None:
 
 
 def get_rate(from_currency: str, to_currency: str) -> dict:
+    """Получает курс из кеша с проверкой срока актуальности."""
     get_currency(from_currency)
     get_currency(to_currency)
 

@@ -176,6 +176,7 @@ class RatesStorage:
         self.data_dir = data_dir
 
     def save_record(self, record: dict) -> dict:
+        """Сохраняет курс в историю и обновляет кеш, если запись новее."""
         history_added = save_rate_record(
             record,
             data_dir=self.data_dir,

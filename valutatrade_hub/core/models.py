@@ -5,6 +5,8 @@ from datetime import datetime
 
 
 class User:
+    """Пользователь системы с регистрационными данными и защищённым паролем."""
+
     def __init__(
         self,
         user_id: int,
@@ -45,6 +47,7 @@ class User:
 
     @username.setter
     def username(self, new_username: str) -> None:
+        """Изменяет имя пользователя после проверки значения."""
         if not isinstance(new_username, str) or not new_username.strip():
             raise ValueError("Имя пользователя не может быть пустым")
 
@@ -63,6 +66,8 @@ class User:
         return self._registration_date
 
     def get_user_info(self) -> dict:
+        """Возвращает публичную информацию о пользователе."""
+
         return {
             "user_id": self._user_id,
             "username": self._username,
@@ -70,6 +75,8 @@ class User:
         }
 
     def change_password(self, new_password: str) -> None:
+        """Проверяет новый пароль и сохраняет его SHA-256-хеш с солью."""
+
         if not isinstance(new_password, str) or len(new_password) < 4:
             raise ValueError("Пароль должен содержать минимум 4 символа")
 
@@ -80,6 +87,8 @@ class User:
         ).hexdigest()
 
     def verify_password(self, password: str) -> bool:
+        """Проверяет соответствие пароля сохранённому хешу."""
+
         if not isinstance(password, str):
             return False
 
@@ -91,6 +100,8 @@ class User:
 
 
 class Wallet:
+    """Кошелёк для хранения баланса одной валюты."""
+
     def __init__(self, currency_code: str, balance: float = 0.0) -> None:
         if not isinstance(currency_code, str) or not currency_code.strip():
             raise ValueError("Код валюты не может быть пустым")
@@ -100,10 +111,12 @@ class Wallet:
 
     @property
     def balance(self) -> float:
+        """Возвращает текущий баланс кошелька."""
         return self._balance
 
     @balance.setter
     def balance(self, new_balance: float) -> None:
+        """Устанавливает баланс кошелька после проверки значения."""
         if isinstance(new_balance, bool) or not isinstance(new_balance, (int, float)):
             raise TypeError("Баланс должен быть числом")
 
@@ -116,6 +129,8 @@ class Wallet:
         self._balance = float(new_balance)
 
     def deposit(self, amount: float) -> None:
+        """Увеличивает баланс кошелька на указанное количество валюты."""
+
         if isinstance(amount, bool) or not isinstance(amount, (int, float)):
             raise TypeError("Сумма пополнения должна быть числом")
 
@@ -127,6 +142,8 @@ class Wallet:
         self._balance += amount
 
     def withdraw(self, amount: float) -> None:
+        """Уменьшает баланс кошелька с проверкой доступных средств."""
+
         if isinstance(amount, bool) or not isinstance(amount, (int, float)):
             raise TypeError("Сумма снятия должна быть числом")
 
@@ -139,6 +156,8 @@ class Wallet:
         self._balance -= amount
 
     def get_balance_info(self) -> dict:
+        """Возвращает код валюты и текущий баланс кошелька."""
+
         return {
             "currency_code": self.currency_code,
             "balance": self._balance,
@@ -146,6 +165,8 @@ class Wallet:
 
 
 class Portfolio:
+    """Портфель пользователя, объединяющий его валютные кошельки."""
+
     def __init__(
         self,
         user_id: int,
@@ -187,9 +208,12 @@ class Portfolio:
 
     @property
     def wallets(self) -> dict[str, Wallet]:
+        """Возвращает копию словаря валютных кошельков."""
         return self._wallets.copy()
 
     def add_currency(self, currency_code: str) -> None:
+        """Добавляет в портфель новый кошелёк с нулевым балансом."""
+
         if not isinstance(currency_code, str) or not currency_code.strip():
             raise ValueError("Код валюты не может быть пустым")
 
@@ -199,6 +223,8 @@ class Portfolio:
         self._wallets[currency_code] = Wallet(currency_code)
 
     def get_wallet(self, currency_code: str) -> Wallet:
+        """Возвращает кошелёк по коду валюты."""
+
         if not isinstance(currency_code, str) or not currency_code.strip():
             raise ValueError("Код валюты не может быть пустым")
 
@@ -212,6 +238,8 @@ class Portfolio:
         base_currency: str = "USD",
         rates: dict[str, float] | None = None,
     ) -> float:
+        """Рассчитывает стоимость портфеля в базовой валюте по переданным курсам."""
+
         if not isinstance(base_currency, str) or not base_currency.strip():
             raise ValueError("Код базовой валюты не может быть пустым")
 

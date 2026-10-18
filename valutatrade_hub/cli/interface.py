@@ -4,7 +4,7 @@ from datetime import datetime
 
 from prettytable import PrettyTable
 
-from valutatrade_hub.core.currencies import CURRENCY_REGISTRY
+from valutatrade_hub.core.currencies import CURRENCY_REGISTRY, CryptoCurrency
 from valutatrade_hub.core.exceptions import (
     ApiRequestError,
     CurrencyNotFoundError,
@@ -30,6 +30,8 @@ from valutatrade_hub.parser_service.updater import RatesUpdater
 
 
 def run() -> None:
+    """Запускает интерактивный интерфейс командной строки."""
+
     print("Welcome to ValutaTrade Hub!")
     print("Введите команду или 'exit' для выхода.")
 
@@ -93,6 +95,8 @@ def run() -> None:
 
 
 def handle_register(args: list[str]) -> None:
+    """Обрабатывает регистрацию нового пользователя."""
+
     if len(args) != 4 or args[0] != "--username" or args[2] != "--password":
         print("Использование: register --username <имя> --password <пароль>")
         return
@@ -111,6 +115,8 @@ def handle_register(args: list[str]) -> None:
 
 
 def handle_login(args: list[str]):
+    """Проверяет учётные данные и выполняет вход пользователя."""
+
     if len(args) != 4 or args[0] != "--username" or args[2] != "--password":
         print("Использование: login --username <имя> --password <пароль>")
         return None
@@ -129,6 +135,8 @@ def handle_login(args: list[str]):
 
 
 def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
+    """Отображает валютные кошельки и общую стоимость портфеля."""
+
     if current_user is None:
         print("Сначала выполните login")
         return
@@ -146,8 +154,8 @@ def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
             user_id=current_user.user_id,
             base_currency=base_currency,
         )
-    except ValueError as error:
-        print(error)
+    except (ValueError, CurrencyNotFoundError, ApiRequestError) as error:
+        print(f"Ошибка: {error}")
         return
 
     print(
@@ -172,7 +180,8 @@ def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
         balance = wallet["balance"]
         value = wallet["value"]
 
-        balance_precision = 4 if code in ("BTC", "ETH", "SOL") else 2
+        currency = CURRENCY_REGISTRY.get(code)
+        balance_precision = 4 if isinstance(currency, CryptoCurrency) else 2
 
         table.add_row(
             [
@@ -187,12 +196,16 @@ def handle_show_portfolio(args: list[str], current_user: User | None) -> None:
 
 
 def format_rate(rate: float) -> str:
+    """Форматирует валютный курс для вывода в консоль."""
+
     if rate < 1:
         return f"{rate:.8f}"
     return f"{rate:.2f}"
 
 
 def handle_buy(args: list[str], current_user: User | None) -> None:
+    """Обрабатывает покупку валюты текущим пользователем."""
+
     if current_user is None:
         print("Сначала выполните login")
         return
@@ -219,8 +232,8 @@ def handle_buy(args: list[str], current_user: User | None) -> None:
         print(error)
         print("Поддерживаемые валюты: " + ", ".join(CURRENCY_REGISTRY))
         return
-    except ValueError as error:
-        print(error)
+    except (ValueError, ApiRequestError) as error:
+        print(f"Ошибка: {error}")
         return
 
     print(
@@ -240,6 +253,8 @@ def handle_buy(args: list[str], current_user: User | None) -> None:
 
 
 def handle_sell(args: list[str], current_user: User | None) -> None:
+    """Обрабатывает продажу валюты текущим пользователем."""
+
     if current_user is None:
         print("Сначала выполните login")
         return
@@ -267,8 +282,8 @@ def handle_sell(args: list[str], current_user: User | None) -> None:
         print("Поддерживаемые валюты: " + ", ".join(CURRENCY_REGISTRY))
         return
 
-    except (InsufficientFundsError, ValueError) as error:
-        print(error)
+    except (InsufficientFundsError, ValueError, ApiRequestError) as error:
+        print(f"Ошибка: {error}")
         return
 
     print(
@@ -288,6 +303,8 @@ def handle_sell(args: list[str], current_user: User | None) -> None:
 
 
 def handle_get_rate(args: list[str]) -> None:
+    """Отображает прямой и обратный валютные курсы."""
+
     if len(args) != 4 or args[0] != "--from" or args[2] != "--to":
         print("Использование: get-rate --from <валюта> --to <валюта>")
         return
@@ -317,9 +334,9 @@ def handle_get_rate(args: list[str]) -> None:
     if updated_at is None:
         formatted_time = "не требуется"
     else:
-        formatted_time = datetime.fromisoformat(updated_at).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        formatted_time = datetime.fromisoformat(
+            updated_at.replace("Z", "+00:00")
+        ).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     print(
         f"Курс {from_currency}→{to_currency}: "
@@ -550,6 +567,10 @@ def handle_show_rates(args: list[str]) -> None:
                 continue
 
             source_data = pairs.get(f"{currency_code}_USD", {})
+
+            if not isinstance(source_data, dict):
+                continue
+
             updated_at = source_data.get("updated_at")
 
             if isinstance(updated_at, str):
